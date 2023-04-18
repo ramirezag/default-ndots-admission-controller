@@ -11,7 +11,9 @@ import (
 )
 
 const (
-	NDotsKey = "ndots"
+	NDotsKey            = "ndots"
+	DeploymentsResource = "deployments"
+	DaemonsetsResource  = "daemonsets"
 )
 
 type DefaultNDotsAdmitHandler struct {
@@ -24,7 +26,7 @@ func NewDefaultNDotsAdmitHandler(ndotsValue int) *DefaultNDotsAdmitHandler {
 
 // admitHander updates the [dnsConfig] with ndots. It's like doing kubectl patch - Eg.
 //
-//	kubectl patchDnsConfig deployment some_deployment --type json -p '[{"op":"replace","path":"/spec/template/spec/dnsConfig","value":{"options":[{"name":"ndots","value":"2"}]}}]'
+//	kubectl patch deployment cluster-metadata --type json -p '[{"op":"replace","path":"/spec/template/spec/dnsConfig","value":{"options":[{"name":"ndots","value":"2"}]}}]'
 //
 // [dnsConfig]: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#poddnsconfig-v1-core
 func (d *DefaultNDotsAdmitHandler) admitHander(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
@@ -40,8 +42,8 @@ func (d *DefaultNDotsAdmitHandler) admitHander(ar admissionv1.AdmissionReview) *
 		}
 	}
 
-	daemonsetResource := metav1.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonset"}
-	deploymentResource := metav1.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployment"}
+	daemonsetResource := metav1.GroupVersionResource{Group: "apps", Version: "v1", Resource: DaemonsetsResource}
+	deploymentResource := metav1.GroupVersionResource{Group: "apps", Version: "v1", Resource: DeploymentsResource}
 	if ar.Request.Resource == daemonsetResource {
 		daemonset := appsv1.DaemonSet{}
 		deserializer := codecs.UniversalDeserializer()
@@ -113,6 +115,8 @@ func (d *DefaultNDotsAdmitHandler) mutateNdots(dnsConfigToCheck *corev1.PodDNSCo
 			// Log the error but admit the resource to make this controller non-invasive
 			log.Error("Failed to marchall patch dns config. Reason:", err)
 		} else {
+			patchType := admissionv1.PatchTypeJSONPatch
+			reviewResponse.PatchType = &patchType
 			reviewResponse.Patch = patchBytes
 		}
 	}

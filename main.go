@@ -1,15 +1,14 @@
 package main
 
 import (
-	"crypto/tls"
 	"default-ndots-admission-controller/internal"
 	"fmt"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 )
 
 func init() {
@@ -18,15 +17,27 @@ func init() {
 }
 
 func main() {
-	// Start the tracer
-	tracer.Start()
-	defer tracer.Stop()
-
 	certFile := os.Getenv("TLS_CERT")
 	keyFile := os.Getenv("TLS_KEY")
 	if certFile == "" || keyFile == "" {
 		log.Error("TLS_CERT and TLS_KEY environment variables are required.")
 		return
+	}
+	var (
+		requestTimeoutDuration time.Duration
+		err                    error
+	)
+	requestTimeoutEnv := os.Getenv("REQUEST_TIMEOUT")
+	if requestTimeoutEnv == "" {
+		// Allowed timeout is between 10 - 30s
+		// https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#timeouts
+		requestTimeoutDuration = time.Second * 20
+	} else {
+		requestTimeoutDuration, err = time.ParseDuration(requestTimeoutEnv)
+		if err != nil {
+			log.Error("Unable to parse REQUEST_TIMEOUT. Reason:", err)
+			return
+		}
 	}
 	tlsFilesExists := true
 	if _, err := os.Stat(certFile); os.IsNotExist(err) {
@@ -39,16 +50,7 @@ func main() {
 		log.Error("TLS_CERT and/or TLS_KEY file(s) not found.")
 		return
 	}
-	sCert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		log.Error(errors.Wrap(err, "Unable to load TLS key pair."))
-		return
-	}
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{sCert},
-		// TODO: uses mutual tls after we agree on what cert the apiserver should use.
-		// ClientAuth:   tls.RequireAndVerifyClientCert,
-	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		// We listen on port 8443 such that we do not need root privileges or extra capabilities for this server.
@@ -65,14 +67,10 @@ func main() {
 			return
 		}
 	}
-	r := internal.NewHandlers(ndotsValue)
-	server := &http.Server{
-		Addr:      fmt.Sprintf(":%s", port),
-		TLSConfig: tlsConfig,
-		Handler:   r,
-	}
-
-	if err = server.ListenAndServeTLS("", ""); err != nil {
+	r := internal.NewHandlers(ndotsValue, requestTimeoutDuration)
+	addr := fmt.Sprintf("0.0.0.0:%s", port)
+	log.Infof("Default ndots controller starting with the following info - address: %s, request timeout: %s, ndots value: %d", addr, requestTimeoutDuration, ndotsValue)
+	if err = http.ListenAndServeTLS(addr, certFile, keyFile, r); err != nil {
 		log.Error(err)
 	}
 }

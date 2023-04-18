@@ -7,12 +7,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestHealth(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
-	handlers := internal.NewHandlers(2)
+	handlers := internal.NewHandlers(2, time.Second*2)
 	handlers.ServeHTTP(w, req)
 	res := w.Result()
 	defer res.Body.Close()

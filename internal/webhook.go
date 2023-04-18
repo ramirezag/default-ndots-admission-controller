@@ -98,6 +98,7 @@ func serve(w http.ResponseWriter, r *http.Request, admit admitHandler) {
 		responseAdmissionReview.Response = admit.v1beta1(*requestedAdmissionReview)
 		responseAdmissionReview.Response.UID = requestedAdmissionReview.Request.UID
 		responseObj = responseAdmissionReview
+		log.Infof("Sending response: {UID:%s,Allowed:%t,PatchType:%v,Patch:%s}", responseAdmissionReview.Response.UID, responseAdmissionReview.Response.Allowed, responseAdmissionReview.Response.PatchType, string(responseAdmissionReview.Response.Patch))
 	case v1.SchemeGroupVersion.WithKind("AdmissionReview"):
 		requestedAdmissionReview, ok := obj.(*v1.AdmissionReview)
 		if !ok {
@@ -109,6 +110,7 @@ func serve(w http.ResponseWriter, r *http.Request, admit admitHandler) {
 		responseAdmissionReview.Response = admit.v1(*requestedAdmissionReview)
 		responseAdmissionReview.Response.UID = requestedAdmissionReview.Request.UID
 		responseObj = responseAdmissionReview
+		log.Infof("Sending response: {UID:%s,Allowed:%t,PatchType:%v,Patch:%s}", responseAdmissionReview.Response.UID, responseAdmissionReview.Response.Allowed, responseAdmissionReview.Response.PatchType, string(responseAdmissionReview.Response.Patch))
 	default:
 		msg := fmt.Sprintf("Unsupported group version kind: %v", gvk)
 		log.Error(msg)
@@ -116,7 +118,6 @@ func serve(w http.ResponseWriter, r *http.Request, admit admitHandler) {
 		return
 	}
 
-	log.Info(fmt.Sprintf("sending response: %v", responseObj))
 	respBytes, err := json.Marshal(responseObj)
 	if err != nil {
 		log.Error(err)
