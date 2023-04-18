@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "default-ndots-admission-controller.fullname" . }}
+  labels:
+    {{- include "default-ndots-admission-controller.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "default-ndots-admission-controller.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "default-ndots-admission-controller.selectorLabels" . | nindent 8 }}
+        {{- if .Values.podLabels }}
+        {{- toYaml .Values.podLabels | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: https
+          containerPort: {{ .Values.port }}
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "{{ .Values.port }}"
+        - name: NDOTS_VALUE
+          value: "{{ .Values.defaultNDotsValue }}"
+        - name: TLS_CERT
+          value: "{{ .Values.secret.mountPath }}/{{ .Values.secret.tlsCrtFileName }}"
+        - name: TLS_KEY
+          value: "{{ .Values.secret.mountPath }}/{{ .Values.secret.tlsKeyFileName }}"
+        - name: REQUEST_TIMEOUT
+          value: "{{ .Values.timeoutInSeconds }}s"
+        - name: DD_AGENT_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: https
+            scheme: HTTPS
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: https
+            scheme: HTTPS
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: https
+            scheme: HTTPS
+          failureThreshold: 3
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        volumeMounts:
+        - name: webhook-tls-certs
+          mountPath: {{ .Values.secret.mountPath }}
+          readOnly: true
+      volumes:
+      - name: webhook-tls-certs
+        secret:
+          secretName: "{{ .Values.secret.name | default .Release.Name }}"
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
